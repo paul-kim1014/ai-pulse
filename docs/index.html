@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Pulse — AI 트렌드·영향력 랭킹</title>
+<meta name="description" content="GitHub · Hugging Face · AI 논문을 하나의 평가 체계로 통합한 AI 트렌드·영향력 순위 (매일 06:00 KST 갱신)">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <div>
+      <h1>AI Pulse <span class="sub">AI 트렌드·영향력 랭킹</span></h1>
+      <p class="muted">GitHub · Hugging Face · AI 논문 통합 평가 · 매일 06:00 KST 자동 업데이트</p>
+    </div>
+    <div class="status">
+      <div>최종 업데이트 <b id="updated">–</b></div>
+      <div id="src-status" class="src-status"></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="trend-grid">
+    <article class="card summary">
+      <h2>오늘의 AI 트렌드 요약</h2>
+      <ol id="summary" class="summary-list"><li class="muted">요약 준비 중</li></ol>
+      <div class="new-entries"><h3>통합 주간 TOP 10 신규 진입</h3><div id="new-entries" class="chips"></div></div>
+    </article>
+    <article class="card">
+      <h2>급상승 키워드 <span class="hint">최근 7일 ÷ 직전 28일 주평균</span></h2>
+      <ol id="keywords" class="kw-list"></ol>
+    </article>
+    <article class="card wide">
+      <h2>분야 점유율 변화 <span class="hint">최근 12주 · 그 주 공개 항목의 주목도 합계 비중</span></h2>
+      <div class="chart-box"><canvas id="share-chart" aria-label="분야 점유율 꺾은선 그래프"></canvas></div>
+      <details class="table-view"><summary>표로 보기</summary><div id="share-table"></div></details>
+    </article>
+  </section>
+
+  <section class="block" id="integrated">
+    <div class="block-head">
+      <div>
+        <h2>AI 분야 통합 트렌드 순위</h2>
+        <p class="muted">논문·코드·모델을 arXiv ID로 묶은 ‘연구 패밀리’ 단위 · 점수 = 소스별 최고점 70% + 평균 30%</p>
+      </div>
+      <div class="seg" data-target="int-axis" role="tablist">
+        <button data-v="popularity" class="on">인기</button><button data-v="influence">영향력</button>
+      </div>
+    </div>
+    <div class="chips filter" id="int-fields" aria-label="분야 필터 (다중 선택)"></div>
+    <div class="period-pick seg" data-target="int-period"></div>
+    <div id="int-note" class="note"></div>
+    <div class="table-wrap"><table class="rank" id="int-table"></table></div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <div>
+        <h2>2×2 매트릭스 <span class="hint">통합 순위 상위 항목 · 인기(가로) × 영향력(세로)</span></h2>
+      </div>
+      <div class="seg" data-target="mx-period"></div>
+    </div>
+    <div class="matrix-box"><canvas id="matrix-chart" aria-label="인기와 영향력 산점도"></canvas>
+      <span class="q q1">표준 (둘 다 높음)</span><span class="q q2">숨은 핵심</span>
+      <span class="q q3">관심 밖</span><span class="q q4">화제성</span></div>
+  </section>
+
+  <section class="block" id="by-source">
+    <div class="block-head">
+      <div>
+        <h2>분야별 영향력 순위</h2>
+        <p class="muted">영향력은 ‘같은 분야 · 같은 시기’ 그룹 안 백분위로 정규화해 분야 규모 차이를 제거</p>
+      </div>
+      <div class="seg" data-target="src-axis">
+        <button data-v="influence" class="on">영향력</button><button data-v="popularity">인기</button>
+      </div>
+    </div>
+    <nav class="tabs" id="src-tabs">
+      <button data-v="github" class="on">GitHub</button>
+      <button data-v="hf_model">Hugging Face 모델</button>
+      <button data-v="hf_dataset">Hugging Face 데이터셋</button>
+      <button data-v="paper">논문</button>
+    </nav>
+    <nav class="subtabs" id="src-fields"></nav>
+    <div class="period-pick seg" data-target="src-period"></div>
+    <div id="src-note" class="note"></div>
+    <div class="table-wrap"><table class="rank" id="src-table"></table></div>
+  </section>
+
+  <section class="block method">
+    <h2>평가 기준</h2>
+    <div class="method-grid" id="method"></div>
+  </section>
+</main>
+
+<footer class="wrap site-foot muted">
+  데이터: GitHub API · Hugging Face Hub/Papers API · Semantic Scholar · arXiv. 제목·짧은 설명·링크만 표시합니다.
+  한국어 설명은 로컬 LLM(qwen3:8b)이 자동 생성해 부정확할 수 있습니다.
+</footer>
+
+<div id="drawer" class="drawer" aria-hidden="true">
+  <div class="drawer-bg" data-close></div>
+  <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="d-title">
+    <button class="x" data-close aria-label="닫기">×</button>
+    <div id="d-body"></div>
+  </aside>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

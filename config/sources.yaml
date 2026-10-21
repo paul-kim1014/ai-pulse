@@ -1,0 +1,41 @@
+# 추적 대상(Universe) 편입 조건 — 기획서 2.2 / 부록 B
+github:
+  topics: [llm, large-language-models, machine-learning, deep-learning, computer-vision,
+           diffusion-models, ai-agents, rag, speech-recognition, reinforcement-learning,
+           multimodal, generative-ai, robotics, text-to-speech, inference]
+  min_stars: 200
+  pages_per_topic: 3          # 검색 1페이지 = 100개
+  new_repo_min_stars: 30      # 최근 생성 저장소(급상승 후보) 편입 기준
+  new_repo_queries: ["llm", "agent", "diffusion", "multimodal", "speech", "rag", "model"]
+  graphql_batch: 25
+huggingface:
+  models_top_n: { trendingScore: 1000, downloads: 1000, likes: 1000 }
+  datasets_top_n: { trendingScore: 300, downloads: 500, likes: 500 }
+  detail_per_day: 500         # 파생 모델·Spaces 상세 조회 일일 상한 (오래된 것부터 순환)
+  detail_refresh_days: 7
+papers:
+  arxiv_categories: [cs.AI, cs.CL, cs.CV, cs.LG, cs.RO, cs.SD, eess.AS, stat.ML, cs.GR, cs.MA]
+  hf_backfill_start: "2023-05-04"   # HF Daily Papers 시작일
+  hf_refresh_days: 21               # 최근 N일 Daily Papers는 업보트 변화 반영 위해 재조회
+  s2_classic_min_citations: 800
+  top_venues: [NeurIPS, ICML, ICLR, CVPR, ICCV, ECCV, ACL, EMNLP, NAACL, AAAI, IJCAI,
+               "Neural Information Processing Systems", "International Conference on Machine Learning",
+               "International Conference on Learning Representations",
+               "Computer Vision and Pattern Recognition", "International Conference on Computer Vision",
+               "European Conference on Computer Vision", "Annual Meeting of the Association for Computational Linguistics",
+               "Conference on Empirical Methods in Natural Language Processing", "Nature", "Science"]
+llm:
+  ollama_url: "http://localhost:11434"
+  model: "qwen3:8b"
+  classify_per_run: 300       # LLM 2차 분류 일일 상한
+  describe_per_run: 1500      # 한국어 한 줄 설명 생성 일일 상한 (캐시되므로 첫날만 많음)
+interest_tags:
+  medical_ai: [medical, clinical, radiology, pathology, ehr, healthcare, biomedical, medicine,
+               patient, diagnosis, ct scan, mri, x-ray, surgical, drug, protein, genomic]
+  korean: [korean, korea, ko, kor, 한국어, hangul, exaone, hyperclova, kanana]
+  on_device: [on-device, ondevice, edge, mobile, gguf, mlx, tinyml, lightweight, quantized, int4, 4-bit, llama.cpp]
+schedule:
+  run_at_kst: "06:00"
+export:
+  list_size: 200              # 화면 필터용으로 기간·축·소스별 상위 N개를 내보냄
+  top_n: 10

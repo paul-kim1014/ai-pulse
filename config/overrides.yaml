@@ -1,0 +1,5 @@
+# 수동 보정: 자동 분류보다 우선한다. 예)
+#   "github:vllm-project/vllm": { field: efficiency }
+#   "hf_model:openai/whisper-large-v3": { field: speech, tags: [on_device] }
+#   "github:some/mirror": { exclude: true }
+{}

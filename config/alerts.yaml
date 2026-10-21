@@ -1,0 +1,12 @@
+# 순위 급변·이슈 감지 메일 발송 조건 (하나라도 해당하면 발송)
+enabled: true
+watch_views: [integrated, github, hf_model, hf_dataset, paper]
+watch_periods: [weekly]          # 일 단위로 의미 있게 바뀌는 기간
+watch_axes: [popularity, influence]
+rank_jump: 5                     # 상위 10위 안에서 전일 대비 N계단 이상 상승
+new_entry_top: 3                 # 전일 10위 밖 → 오늘 N위 이내 신규 진입
+new_number_one: true             # 1위 교체
+keyword_ratio: 3.0               # 급상승 키워드 증가 배수 기준
+keyword_min_count: 8
+anomaly: true                    # '검증 필요' 이상치 발생
+max_items_per_mail: 25

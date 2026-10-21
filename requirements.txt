@@ -1,0 +1,4 @@
+pyyaml
+httpx
+tenacity
+pytest

@@ -1,0 +1,91 @@
+# 분야 대분류(6개) 매핑표 — 기획서 4장
+order: [llm, vision, multimodal, speech, agents, efficiency]
+labels:
+  llm: "① LLM·언어"
+  vision: "② 비전·생성"
+  multimodal: "③ 멀티모달"
+  speech: "④ 음성·오디오"
+  agents: "⑤ 에이전트·RL·로보틱스"
+  efficiency: "⑥ ML 기초·효율화"
+arxiv:
+  cs.CL: llm
+  cs.IR: llm
+  cs.CV: vision
+  cs.GR: vision
+  cs.MM: multimodal
+  cs.SD: speech
+  eess.AS: speech
+  cs.RO: agents
+  cs.MA: agents
+  cs.LG: efficiency
+  stat.ML: efficiency
+  cs.DC: efficiency
+  cs.AR: efficiency
+  cs.PF: efficiency
+  math.OC: efficiency
+pipeline_tag:
+  text-generation: llm
+  text2text-generation: llm
+  fill-mask: llm
+  translation: llm
+  summarization: llm
+  question-answering: llm
+  token-classification: llm
+  text-classification: llm
+  sentence-similarity: llm
+  feature-extraction: llm
+  text-ranking: llm
+  table-question-answering: llm
+  zero-shot-classification: llm
+  image-classification: vision
+  object-detection: vision
+  image-segmentation: vision
+  text-to-image: vision
+  image-to-image: vision
+  text-to-video: vision
+  image-to-video: vision
+  video-to-video: vision
+  unconditional-image-generation: vision
+  depth-estimation: vision
+  image-to-3d: vision
+  text-to-3d: vision
+  mask-generation: vision
+  keypoint-detection: vision
+  zero-shot-image-classification: multimodal
+  zero-shot-object-detection: multimodal
+  image-text-to-text: multimodal
+  visual-question-answering: multimodal
+  document-question-answering: multimodal
+  image-to-text: multimodal
+  video-text-to-text: multimodal
+  any-to-any: multimodal
+  visual-document-retrieval: multimodal
+  automatic-speech-recognition: speech
+  text-to-speech: speech
+  text-to-audio: speech
+  audio-classification: speech
+  audio-to-audio: speech
+  voice-activity-detection: speech
+  audio-text-to-text: speech
+  reinforcement-learning: agents
+  robotics: agents
+  tabular-classification: efficiency
+  tabular-regression: efficiency
+  time-series-forecasting: efficiency
+  graph-ml: efficiency
+# GitHub 토픽·제목·설명·키워드 규칙 (앞쪽 분야가 우선; multimodal/speech/agents처럼 구체적인 것을 먼저 본다)
+keywords:
+  multimodal: [multimodal, multi-modal, vlm, vision-language, vision language, visual question, mllm, lmm,
+               image-text, document understanding, ocr, omni, llava, video understanding, video-llm]
+  speech: [speech, tts, asr, text-to-speech, voice, audio, music, whisper, speaker, sound, singing]
+  agents: [agent, agents, agentic, reinforcement-learning, reinforcement learning, rlhf-free, robot, robotics,
+           embodied, autonomous, multi-agent, mcp, tool use, tool-use, computer-use, browser-use, gui agent, policy, manipulation]
+  vision: [computer-vision, computer vision, diffusion, image generation, text-to-image, video generation,
+           segmentation, object detection, detection, 3d, gaussian splatting, nerf, image, video, stable-diffusion,
+           comfyui, gan, pose estimation, depth]
+  efficiency: [quantization, inference, serving, mlops, distributed, kernel, cuda, triton, compiler, optimizer,
+               pruning, distillation, sparsity, training framework, deep-learning-framework, pytorch, jax, tensorflow,
+               accelerat, gpu, llm-inference, vector database, theory, generalization, optimization, federated,
+               graph neural, time series, tabular, benchmark-free]
+  llm: [llm, large language model, language model, nlp, rag, retrieval, chatbot, gpt, transformer, reasoning,
+        prompt, tokenizer, embedding, text generation, translation, question answering, chatgpt, instruction]

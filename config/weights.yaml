@@ -1,0 +1,21 @@
+# 기획서 3.2 / 부록 A 초기 가중치. 운영 1~2개월 후 결과를 보고 조정한다.
+# 값이 없는(수집 불가·결측) 지표의 가중치는 나머지 지표에 비례 재분배된다.
+github:
+  popularity:  { stars_delta: 0.60, forks_delta: 0.20, issues_prs_delta: 0.20 }
+  influence:   { dependents: 0.35, package_downloads: 0.25, contributors_1y: 0.15,
+                 health: 0.15, forks_total: 0.10 }
+huggingface:
+  popularity:  { likes_delta: 0.50, trending_score: 0.30, downloads_30d: 0.20 }
+  influence:   { derivatives: 0.40, family_downloads: 0.30, spaces: 0.20, likes_total: 0.10 }
+papers:
+  popularity:  { hf_upvotes: 0.40, code_stars_delta: 0.30, citation_velocity: 0.30 }
+  influence:   { influential_citations: 0.40, age_norm_citations: 0.30,
+                 code_model_adoption: 0.20, venue: 0.10 }
+anomaly:
+  zscore_threshold: 4.0
+  popularity_penalty: 0.5
+  min_history_days: 14
+  download_ratio_bottom_pct: 1.0
+family:
+  max_weight: 0.7
+  mean_weight: 0.3
