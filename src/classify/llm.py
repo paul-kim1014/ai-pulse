@@ -19,12 +19,18 @@ FIELD_DESC = {
 }
 
 
-def _chat(prompt, fmt_json=True, num_predict=600):
+def _schema(n):
+    """번호 1..n 키를 모두 요구하는 JSON 스키마 — 그냥 "json"으로 두면 qwen3가 첫 항목만 답하는 경우가 많다."""
+    keys = [str(i + 1) for i in range(n)]
+    return {"type": "object", "properties": {k: {"type": "string"} for k in keys}, "required": keys}
+
+
+def _chat(prompt, fmt_json=True, num_predict=600, n_keys=None):
     c = cfg("sources")["llm"]
     body = {"model": c["model"], "messages": [{"role": "user", "content": prompt}], "stream": False,
-            "think": False, "options": {"temperature": 0.2, "num_predict": num_predict}}
+            "think": False, "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": 8192}}
     if fmt_json:
-        body["format"] = "json"
+        body["format"] = _schema(n_keys) if n_keys else "json"
     r = httpx.post(f"{c['ollama_url']}/api/chat", json=body, timeout=180)
     r.raise_for_status()
     txt = r.json()["message"]["content"]
@@ -47,7 +53,7 @@ def classify_batch(rows):
     prompt = (f"다음 AI 관련 항목을 아래 6개 분야 중 하나로 분류하라.\n{cats}\n\n{lines}\n\n"
               'JSON으로만 답하라: {"1": "llm", "2": "vision", ...}')
     try:
-        out = json.loads(_chat(prompt))
+        out = json.loads(_chat(prompt, n_keys=len(rows)))
     except Exception as e:
         log.warning("LLM 분류 실패: %s", e)
         return {}
@@ -68,19 +74,22 @@ def describe_batch(rows):
         meta = ex.get("pipeline_tag") or ""
         return f"[{r['source']}] {r['title']} | {meta} | {kws} | {base[:350]}"
     lines = "\n".join(f"{i + 1}. {info(r)}" for i, r in enumerate(rows))
-    prompt = ("다음 AI 저장소·모델·데이터셋·논문 각각을 한국어 한 문장(35자 이내, 명사형 종결)으로 설명하라. "
-              "주어진 정보에 없는 내용은 지어내지 말고, 정보가 부족하면 이름과 태그로 유형만 설명하라. "
+    prompt = ("다음 AI 저장소·모델·데이터셋·논문 각각이 '무엇인지'를 한국어 짧은 구(25~40자, 명사형 종결)로 설명하라. "
+              "항목 이름은 반복하지 마라(화면에 이미 표시됨). 예: '경량 LLM 추론 서버', '의료 영상 분할용 확산 모델'. "
+              "주어진 정보에 없는 내용은 지어내지 말고, 정보가 부족하면 태그로 유형만 설명하라. "
               "고유명사(모델명·제품명)는 영어 그대로 둔다.\n\n"
               f"{lines}\n\nJSON으로만 답하라: {{\"1\": \"...\", \"2\": \"...\"}}")
     try:
-        out = json.loads(_chat(prompt, num_predict=900))
+        out = json.loads(_chat(prompt, num_predict=1200, n_keys=len(rows)))
     except Exception as e:
         log.warning("LLM 설명 생성 실패: %s", e)
         return {}
     res = {}
     for i, r in enumerate(rows):
-        v = str(out.get(str(i + 1), "")).strip()
-        if 4 <= len(v) <= 80:
+        v = str(out.get(str(i + 1), "")).strip().rstrip(".")
+        if len(v) > 60:  # 너무 길면 첫 문장·쉼표 앞까지만
+            v = re.split(r"(?<=[다요])\.|, ", v)[0][:60]
+        if len(v) >= 4:
             res[r["item_id"]] = v
     return res
 

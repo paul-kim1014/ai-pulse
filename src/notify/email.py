@@ -17,7 +17,7 @@ PERIOD_KO = {"weekly": "주간", "monthly": "월간", "yearly": "연간", "total
 AXIS_KO = {"popularity": "인기", "influence": "영향력"}
 
 
-def detect_events(lists, prev_lists, keywords, flags, items_meta):
+def detect_events(lists, prev_lists, keywords, flags, items_meta, alerted_keywords=()):
     """알림 조건(config/alerts.yaml)에 해당하는 사건 목록."""
     c = cfg("alerts")
     ev = []
@@ -31,8 +31,10 @@ def detect_events(lists, prev_lists, keywords, flags, items_meta):
                 prev_rank = {iid: r + 1 for r, iid in enumerate(prev)}
                 tag = f"{VIEW_KO[view]} {PERIOD_KO[p]} {AXIS_KO[a]}"
                 if c["new_number_one"] and prev and cur[0] != prev[0]:
+                    was = prev_rank.get(cur[0])
                     ev.append({"kind": "1위 교체", "where": tag, "id": cur[0],
-                               "detail": f"이전 1위: {items_meta.get(prev[0], {}).get('t', prev[0])}"})
+                               "detail": f"{f'{was}위' if was else '순위권 밖'} → 1위 · 이전 1위: "
+                                         f"{items_meta.get(prev[0], {}).get('t', prev[0])}"})
                 for r, iid in enumerate(cur, 1):
                     pr = prev_rank.get(iid)
                     if (pr is None or pr > 10) and r <= c["new_entry_top"]:
@@ -41,16 +43,16 @@ def detect_events(lists, prev_lists, keywords, flags, items_meta):
                     elif pr is not None and pr <= 10 and pr - r >= c["rank_jump"]:
                         ev.append({"kind": "급상승", "where": tag, "id": iid, "detail": f"{pr}위 → {r}위 (▲{pr - r})"})
     for k in keywords:
-        if k["ratio"] >= c["keyword_ratio"] and k["n"] >= c["keyword_min_count"]:
+        if k["ratio"] >= c["keyword_ratio"] and k["n"] >= c["keyword_min_count"] and k["k"] not in alerted_keywords:
             ev.append({"kind": "급상승 키워드", "where": "트렌드", "id": None,
                        "detail": f"'{k['k']}' 최근 7일 {k['n']}건 (평소 대비 ×{k['ratio']})"})
     if c["anomaly"]:
         for iid in flags:
             ev.append({"kind": "검증 필요", "where": "이상치", "id": iid, "detail": "스타·좋아요 비정상 급증(동반 지표 변화 없음)"})
-    # 같은 항목·종류 중복 제거
+    # 같은 순위표의 같은 항목은 한 번만 (1위 교체 > 신규 진입 > 급상승 순으로 먼저 들어간 것 유지)
     seen, out = set(), []
     for e in ev:
-        key = (e["kind"], e["id"], e["detail"] if e["id"] is None else "")
+        key = (e["id"], e["where"]) if e["id"] else (e["kind"], e["detail"])
         if key not in seen:
             seen.add(key)
             out.append(e)

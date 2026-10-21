@@ -7,7 +7,7 @@ import json
 import os
 import time
 import traceback
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from src.classify import llm
 from src.classify.run import classify_all, describe_all
@@ -100,6 +100,8 @@ def main():
 
     # 6. 트렌드·요약
     kws = rising_keywords(con, today)
+    con.executemany("INSERT OR REPLACE INTO trends VALUES(?,?,?,?,?)",
+                    [(today.isoformat(), k["k"], k["src"], k["n"], k["ratio"]) for k in kws])
     share = field_share(con, today, cfg("fields")["order"])
     wk = lists[("integrated", "weekly", "popularity")][:10]
     prev_wk = set(prev.get(("integrated", "weekly", "popularity"), [])[:10])
@@ -135,11 +137,21 @@ def main():
         try:
             meta = json.load(open(os.path.join(os.path.dirname(__file__), "..", "docs", "data", "dashboard.json"),
                                   encoding="utf-8"))["items"]
-            events = mail.detect_events(lists, prev, kws, flags, meta)
+            # 최근 3일 안에 이미 알린 급상승 키워드는 다시 알리지 않음
+            since = (today - timedelta(days=3)).isoformat()
+            alerted = {r[0][6:] for r in con.execute("SELECT keyword FROM trends WHERE date>=? AND date<? AND source='alerted'",
+                                                 (since, today.isoformat()))}
+            events = mail.detect_events(lists, prev, kws, flags, meta, alerted)
             if events:
                 kinds = sorted({e["kind"] for e in events})
                 subj = f"[AI Pulse] {today:%m/%d} 변화 감지 {len(events)}건 — {', '.join(kinds)}"
-                mail.send(subj, mail.render(events, meta, summary, SITE_URL, today.isoformat()))
+                if mail.send(subj, mail.render(events, meta, summary, SITE_URL, today.isoformat())):
+                    for e in events:
+                        if e["kind"] == "급상승 키워드":
+                            k = e["detail"].split("'")[1]
+                            con.execute("INSERT OR REPLACE INTO trends VALUES(?,?,?,?,?)",
+                                        (today.isoformat(), f"alert:{k}", "alerted", 0, 0))
+                    con.commit()
             else:
                 log.info("알림 조건에 해당하는 변화 없음 → 메일 생략")
         except Exception as e:
