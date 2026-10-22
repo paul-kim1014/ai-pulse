@@ -23,5 +23,14 @@ venv/bin/python -m src.pipeline --skip-collect  # 저장된 데이터로 점수�
 venv/bin/python -m pytest -q
 ```
 
+## 검색 · 관심 목록
+- 화면 상단 검색창: 추적 중인 모든 항목(약 3.6만 개)을 제목·이름·키워드로 찾고, 소스 안 전체 순위(예: 누적 인기 146위/8,145)를 보여줍니다.
+  `GitHub·HF 실시간 검색` 버튼은 아직 추적하지 않는 저장소·모델도 GitHub/Hugging Face에서 바로 찾아 줍니다.
+- 자동 수집에서 빠진 항목은 관심 목록에 넣으면 항상 추적합니다 (`config/watchlist.yaml`):
+```bash
+venv/bin/python -m src.watch add storytold/artcraft
+venv/bin/python -m src.watch add hf_model:org/model
+```
+
 ## 메일 알림 설정
 `.env`의 `GMAIL_APP_PASSWORD`에 Google 계정의 **앱 비밀번호**(2단계 인증 필요, 16자리)를 넣으면 됩니다.
