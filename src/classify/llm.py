@@ -80,8 +80,11 @@ def describe_batch(rows):
               "고유명사(모델명·제품명)는 영어 그대로 둔다.\n\n"
               f"{lines}\n\nJSON으로만 답하라: {{\"1\": \"...\", \"2\": \"...\"}}")
     try:
-        out = json.loads(_chat(prompt, num_predict=1200, n_keys=len(rows)))
+        out = json.loads(_chat(prompt, num_predict=1600, n_keys=len(rows)))
     except Exception as e:
+        if len(rows) > 2:  # 출력이 잘려 JSON이 깨지면 절반씩 나눠 다시 시도
+            half = len(rows) // 2
+            return {**describe_batch(rows[:half]), **describe_batch(rows[half:])}
         log.warning("LLM 설명 생성 실패: %s", e)
         return {}
     res = {}

@@ -148,12 +148,29 @@ def collect_s2_citations(con, today):
             keys.append((r["item_id"], ex["s2_id"]))
     day = today.isoformat()
     n = 0
-    for i in range(0, len(keys), 500):
-        chunk = keys[i:i + 500]
+    chunks = [keys[i:i + 500] for i in range(0, len(keys), 500)]
+    failed = []
+    for attempt in range(3):  # 비인증 공유 한도(429)로 실패한 묶음은 쉬었다가 최대 2번 더 시도
+        if attempt:
+            if not failed:
+                break
+            log.info("S2 실패 묶음 %d개 재시도 (%d차)", len(failed), attempt)
+            time.sleep(60)
+            chunks, failed = failed, []
+        n += _s2_round(con, chunks, failed, day, top_venues)
+    if failed:
+        log.warning("S2 최종 실패 %d묶음 — 해당 논문은 전일 인용 값 유지", len(failed))
+    return n
+
+
+def _s2_round(con, chunks, failed, day, top_venues):
+    n = 0
+    for chunk in chunks:
         try:
             res = http_post_json(f"{S2}/paper/batch", {"ids": [k for _, k in chunk]}, params={"fields": S2_FIELDS})
         except Exception as e:
-            log.warning("S2 batch 실패(%d~): %s", i, e)
+            log.debug("S2 batch 실패: %s", e)
+            failed.append(chunk)
             time.sleep(5)
             continue
         for (iid, _), p in zip(chunk, res):
