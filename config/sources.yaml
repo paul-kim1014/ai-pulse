@@ -2,11 +2,19 @@
 github:
   topics: [llm, large-language-models, machine-learning, deep-learning, computer-vision,
            diffusion-models, ai-agents, rag, speech-recognition, reinforcement-learning,
-           multimodal, generative-ai, robotics, text-to-speech, inference]
+           multimodal, generative-ai, robotics, text-to-speech, inference,
+           ai, artificial-intelligence, agent, agents, mcp, claude-code, chatgpt, openai, ollama, langchain,
+           image-generation, video-generation, text-to-image, text-to-video, stable-diffusion, comfyui,
+           3d-generation, aivideo, ai-art, voice-cloning, llm-inference, vector-database, fine-tuning, local-llm,
+           skills, agent-skills, claude-skills, claude, claude-code-plugins, claude-code-skill, mcp-server,
+           codex, cursor, vibe-coding, ai-coding, coding-agent, opencode, ai-assistant, prompt-engineering]
   min_stars: 200
   pages_per_topic: 3          # 검색 1페이지 = 100개
   new_repo_min_stars: 30      # 최근 생성 저장소(급상승 후보) 편입 기준
-  new_repo_queries: ["llm", "agent", "diffusion", "multimodal", "speech", "rag", "model"]
+  new_repo_queries: ["llm", "agent", "diffusion", "multimodal", "speech", "rag", "model",
+                     "claude", "skill", "codex", "mcp", "gpt", "ai"]
+  # 토픽과 무관하게 최근 N일 안에 생긴 인기 AI 저장소 (GitHub Trending 상위권 대부분이 여기에 해당)
+  recent_hot: { days: 365, min_stars: 1000, pages: 3 }
   graphql_batch: 25
 huggingface:
   models_top_n: { trendingScore: 1000, downloads: 1000, likes: 1000 }

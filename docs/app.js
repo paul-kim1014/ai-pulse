@@ -136,6 +136,13 @@ function renderSrc() {
   $("#src-tabs").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.src));
   $("#src-table").innerHTML = tableHtml(state.src, state.srcAxis, matchSrc, state.srcPeriod);
   $("#src-note").textContent = noteFor(state.src);
+  if (state.src === "github") {
+    $("#src-note").insertAdjacentHTML("beforeend", `<div style="margin-top:4px">비교해 보기:
+      <a href="https://github.com/trending?since=weekly" target="_blank" rel="noopener">GitHub Trending 주간 ↗</a> ·
+      <a href="https://www.youtube.com/@Solostack-1/shorts" target="_blank" rel="noopener">Solostack (주간 트렌딩 요약) ↗</a> ·
+      <a href="https://www.youtube.com/@builderjoshkim/shorts" target="_blank" rel="noopener">빌더 조쉬 ↗</a>
+      — ‘주간 · 인기’가 GitHub Trending과 같은 기준(7일 스타 증가량)입니다.</div>`);
+  }
 }
 
 function renderSegs() {
@@ -314,4 +321,158 @@ function init() {
     if (ev.key === "Enter" && ev.target.classList?.contains("cell")) openDetail(ev.target.dataset.id);
   });
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { drawShare(); drawMatrix(); });
+  const hq = decodeURIComponent((location.hash.match(/^#q=(.+)$/) || [])[1] || "");
+  if (hq) { $("#q").value = hq; runSearch(hq); }
 }
+
+/* ---------- 검색 ---------- */
+// 추적 중인 전체 항목 색인(data/search.json)은 처음 검색할 때 한 번만 내려받는다.
+let SI = null, siLoading = null;
+const AXIS_SHORT = { popularity: "인기", influence: "영향력" };
+function loadIndex() {
+  if (SI) return Promise.resolve(SI);
+  siLoading ??= fetch("data/search.json", { cache: "no-cache" }).then((r) => r.json()).then((d) => {
+    // 압축된 행을 [id, 제목, 소스, 분야, 설명, URL, 생성월, 지표, 순위들, 키워드] 형태로 복원
+    const SRC = { g: "github", h: "hf_model", d: "hf_dataset", p: "paper" };
+    const FLD = ["", "llm", "vision", "multimodal", "speech", "agents", "efficiency"];
+    d.rows = d.rows.map((r) => {
+      const name = r[0].split(":").slice(1).join(":");
+      const src = SRC[r[2]];
+      const url = r[5] || (src === "github" ? `https://github.com/${name}` : src === "hf_model" ? `https://huggingface.co/${name}`
+        : src === "hf_dataset" ? `https://huggingface.co/datasets/${name}`
+        : name.startsWith("s2:") ? `https://www.semanticscholar.org/paper/${name.slice(3)}` : `https://arxiv.org/abs/${name}`);
+      return [r[0], r[1] || name, src, FLD[r[3]] || "", r[4] || "", url, r[6] || "", r[7], r[8], r[9] || []];
+    });
+    d.byId = new Map(d.rows.map((r) => [r[0], r]));
+    d.norm = d.rows.map((r) => [squash(r[1]), squash(r[0].split(":").slice(1).join(":")), (r[9] || []).map(squash), (r[4] || "").toLowerCase()]);
+    SI = d; return d;
+  });
+  return siLoading;
+}
+const squash = (s) => String(s || "").toLowerCase().replace(/[\s\-_./:]+/g, "");
+
+function searchLocal(q) {
+  const qs = squash(q), ql = q.toLowerCase().trim();
+  if (qs.length < 2) return [];
+  const out = [];
+  SI.rows.forEach((r, i) => {
+    const [t, name, kws, desc] = SI.norm[i];
+    let sc = 0;
+    if (t === qs || name === qs || name.endsWith("/" + qs) || name.split("/").pop() === qs) sc = 100;
+    else if (t.startsWith(qs) || name.split("/").pop()?.startsWith(qs)) sc = 80;
+    else if (t.includes(qs) || name.includes(qs)) sc = 60;
+    else if (kws.some((k) => k === qs)) sc = 45;
+    else if (kws.some((k) => k.includes(qs))) sc = 35;
+    else if (ql.length >= 3 && desc.includes(ql)) sc = 20;
+    if (sc) out.push([sc, Math.log10(1 + (r[7] || 0)), r]);
+  });
+  out.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+  return out.slice(0, 25).map((x) => x[2]);
+}
+
+function rankChips(r) {
+  const ranks = r[8] || 0;
+  const chips = [];
+  if (Array.isArray(ranks)) {
+    ranks.forEach((rk, j) => {
+      if (!rk) return;
+      const [p, a] = SI.combos[j].split("|");
+      const total = SI.totals[r[2]][j];
+      chips.push(`<span class="${rk <= 10 ? "top" : ""}" title="${SRC_KO[r[2]]} 안에서의 순위">${PERIOD_SHORT[p]} ${AXIS_SHORT[a]} ${nf(rk)}위/${nf(total)}</span>`);
+    });
+  }
+  // 통합 순위(상위 200 안이면)
+  for (const p of PERIODS) for (const a of ["popularity", "influence"]) {
+    const i = (D.lists[`integrated|${p}|${a}`] || []).findIndex((e) => e.id === r[0] || (e.fam || []).includes(r[0]));
+    if (i >= 0) chips.unshift(`<span class="${i < 10 ? "top" : ""}">통합 ${PERIOD_SHORT[p]} ${AXIS_SHORT[a]} ${i + 1}위</span>`);
+  }
+  return chips;
+}
+
+function whyMissing(r) {
+  const ranks = Array.isArray(r[8]) ? r[8] : [];
+  const created = r[6] || "";
+  const cold = ["weekly", "monthly", "yearly"].filter((p) => {
+    const j = SI.combos.indexOf(`${p}|popularity`);
+    return !ranks[j] && r[2] !== "paper" && D.periods[p].modes[r[2]] === "cohort";
+  });
+  if (!cold.length) return "";
+  return `<div class="sr-note">${cold.map((p) => PERIOD_SHORT[p]).join("·")} 순위는 아직 스냅샷이 쌓이는 중이라 ‘그 기간에 새로 공개된 항목’만 비교합니다
+    (이 항목 생성일 ${esc(created || "미상")}). 기준일 스냅샷이 생기면 증가량 순위에 자동 포함됩니다 — 주간은 약 1주 뒤부터.</div>`;
+}
+
+function srHtml(r, showWhy) {
+  const metric = r[7] == null ? "" : r[2] === "github" ? `★ ${nf(r[7])}` : r[2] === "paper" ? `인용·업보트 ${nf(r[7])}` : `♥ ${nf(r[7])}`;
+  const chips = rankChips(r);
+  return `<a class="sr" data-sid="${esc(r[0])}" href="#">
+    <div class="sr-head"><span class="badge src-${r[2]}">${SRC_KO[r[2]]}</span>${r[3] ? `<span class="badge">${esc(fieldShort(r[3]))}</span>` : ""}
+      <span class="sr-t">${esc(r[1])}</span><span class="sr-m">${metric}</span></div>
+    ${r[4] ? `<div class="sr-d">${esc(r[4])}</div>` : ""}
+    <div class="sr-r">${chips.length ? chips.join("") : `<span>오늘 순위 산정 대상 아님</span>`}</div>
+    ${showWhy ? whyMissing(r) : ""}
+  </a>`;
+}
+
+let qTimer = null;
+async function runSearch(q) {
+  const box = $("#search-results");
+  if (!q.trim()) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  if (!SI) box.innerHTML = `<div class="sr-note">검색 색인 불러오는 중…</div>`;
+  await loadIndex();
+  const res = searchLocal(q);
+  box.innerHTML = `<h3>추적 중인 항목 ${res.length ? `${res.length}${res.length === 25 ? "+" : ""}건` : "— 결과 없음"}
+    <span class="hint">전체 ${nf(SI.rows.length)}개 중 · ${esc(SI.run_date)} 기준</span></h3>` +
+    (res.length ? res.map((r, i) => srHtml(r, i === res.findIndex((x) => whyMissing(x)))).join("") : `<div class="sr-note">AI Pulse가 아직 추적하지 않는 항목일 수 있습니다. 위의 <b>GitHub·HF 실시간 검색</b>으로 찾아보세요.</div>`) +
+    `<div id="live-results"></div>`;
+  try { history.replaceState(null, "", `#q=${encodeURIComponent(q)}`); } catch (e) { /* 무시 */ }
+}
+
+async function liveSearch() {
+  const q = $("#q").value.trim();
+  if (q.length < 2) return;
+  if ($("#search-results").hidden) await runSearch(q);
+  const box = $("#live-results");
+  box.innerHTML = `<h3>GitHub·Hugging Face 실시간 검색</h3><div class="sr-note">조회 중…</div>`;
+  const enc = encodeURIComponent(q);
+  const [gh, hm, hd] = await Promise.allSettled([
+    fetch(`https://api.github.com/search/repositories?q=${enc}&sort=stars&order=desc&per_page=6`).then((r) => r.ok ? r.json() : Promise.reject(r.status)),
+    fetch(`https://huggingface.co/api/models?search=${enc}&sort=likes&direction=-1&limit=5`).then((r) => r.json()),
+    fetch(`https://huggingface.co/api/datasets?search=${enc}&sort=likes&direction=-1&limit=3`).then((r) => r.json()),
+  ]);
+  const rows = [];
+  if (gh.status === "fulfilled") for (const r of gh.value.items || []) rows.push({ id: `github:${r.full_name.toLowerCase()}`, s: "github", t: r.full_name, u: r.html_url, d: r.description || "", m: `★ ${nf(r.stargazers_count)}`, c: (r.created_at || "").slice(0, 10), add: r.full_name });
+  if (hm.status === "fulfilled") for (const r of hm.value || []) rows.push({ id: `hf_model:${r.id}`, s: "hf_model", t: r.id, u: `https://huggingface.co/${r.id}`, d: r.pipeline_tag || "", m: `♥ ${nf(r.likes)}`, c: (r.createdAt || "").slice(0, 10), add: `hf_model:${r.id}` });
+  if (hd.status === "fulfilled") for (const r of hd.value || []) rows.push({ id: `hf_dataset:${r.id}`, s: "hf_dataset", t: r.id, u: `https://huggingface.co/datasets/${r.id}`, d: "", m: `♥ ${nf(r.likes)}`, c: (r.createdAt || "").slice(0, 10), add: `hf_dataset:${r.id}` });
+  const errs = [gh.status === "rejected" ? "GitHub(분당 10회 제한 — 잠시 후 다시)" : "", hm.status === "rejected" ? "HF" : ""].filter(Boolean);
+  box.innerHTML = `<h3>GitHub·Hugging Face 실시간 검색 <span class="hint">스타·좋아요 많은 순</span></h3>` +
+    rows.map((x) => {
+      const tracked = SI.byId.has(x.id.toLowerCase()) || SI.byId.has(x.id);
+      return `<div class="sr"><div class="sr-head"><span class="badge src-${x.s}">${SRC_KO[x.s]}</span>
+        <a class="sr-t" href="${esc(x.u)}" target="_blank" rel="noopener">${esc(x.t)} ↗</a><span class="sr-m">${x.m}</span></div>
+        ${x.d ? `<div class="sr-d">${esc(x.d)}</div>` : ""}
+        <div class="sr-r">${tracked ? `<span class="top">AI Pulse 추적 중</span>` : `<span>추적 대상 아님 · 생성 ${esc(x.c)}</span>`}</div>
+        ${tracked ? "" : `<div class="sr-note">관심 목록에 넣으면 다음 06:00 업데이트부터 순위에 포함됩니다: <code>venv/bin/python -m src.watch add ${esc(x.add)}</code></div>`}
+      </div>`;
+    }).join("") + (errs.length ? `<div class="sr-note">조회 실패: ${errs.join(", ")}</div>` : "") + (!rows.length && !errs.length ? `<div class="sr-note">결과 없음</div>` : "");
+}
+
+(function wireSearch() {
+  const q = $("#q");
+  if (!q) return;
+  q.addEventListener("focus", () => { if (D) loadIndex(); }, { once: true });
+  q.addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => D && runSearch(q.value), 200); });
+  q.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") { q.value = ""; runSearch(""); }
+    if (ev.key === "Enter") { clearTimeout(qTimer); runSearch(q.value); }
+  });
+  $("#q-live").addEventListener("click", liveSearch);
+  document.addEventListener("click", (ev) => {
+    const a = ev.target.closest(".sr[data-sid]");
+    if (!a || ev.target.closest("a[target]")) return;
+    ev.preventDefault();
+    const r = SI.byId.get(a.dataset.sid);
+    if (!D.items[r[0]]) D.items[r[0]] = { t: r[1], s: r[2], f: r[3], g: [], d: r[4], u: r[5], c: r[6], l: {}, m: r[7] != null ? { [r[2] === "github" ? "stars" : r[2] === "paper" ? "citations" : "likes"]: r[7] } : {}, kw: r[9] || [] };
+    openDetail(r[0]);
+  }, true);
+})();

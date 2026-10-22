@@ -128,3 +128,54 @@ def export(con, today, lists, prev_lists, windows, modes, items, snaps, trends, 
     }
     dump_json(ROOT / "docs" / "data" / "dashboard.json", data)
     return len(meta)
+
+
+FIELD_CODE = {"llm": 1, "vision": 2, "multimodal": 3, "speech": 4, "agents": 5, "efficiency": 6}
+
+
+def _default_url(iid):
+    src, name = iid.split(":", 1)
+    return {"github": f"https://github.com/{name}", "hf_model": f"https://huggingface.co/{name}",
+            "hf_dataset": f"https://huggingface.co/datasets/{name}",
+            "paper": f"https://www.semanticscholar.org/paper/{name[3:]}" if name.startswith("s2:")
+            else f"https://arxiv.org/abs/{name}"}.get(src)
+
+
+SEARCH_METRIC = {"github": "stars", "hf_model": "likes", "hf_dataset": "likes", "paper": "citations"}
+
+
+def search_index(con, results, snaps, today):
+    """검색용 전체 색인 (docs/data/search.json) — 추적 중인 모든 항목 + 소스 내 전체 순위.
+    화면이 처음 검색할 때만 내려받는다."""
+    from src.scoring.rank import _sort
+    from src.scoring.score import SOURCES
+    combos = [(p, a) for p in PERIODS for a in AXES]
+    ranks, totals = {}, {}
+    for s in SOURCES:
+        totals[s] = []
+        for p, a in combos:
+            order = _sort(results.get((s, p, a), {}), s, a)
+            totals[s].append(len(order))
+            for r, (iid, _) in enumerate(order, 1):
+                ranks.setdefault(iid, [0] * len(combos))[combos.index((p, a))] = r
+    rows = []
+    for r in con.execute("SELECT item_id, source, title, name, field, desc_ko, description, url, created_at, keywords, "
+                         "json_extract(extra,'$.ai_summary') ais FROM items WHERE is_active=1"):
+        src = r["source"]
+        # 한국어 설명 우선. 없으면 저장소·모델만 영문 설명 일부 (논문은 제목으로 충분 — 용량 절감)
+        d = (r["desc_ko"] or ("" if src == "paper" else (r["description"] or "")))[:70]
+        m = snaps.latest(r["item_id"], SEARCH_METRIC[src], today)
+        if src == "paper" and m is None:
+            m = snaps.latest(r["item_id"], "hf_upvotes", today)
+        kw = [k for k in json.loads(r["keywords"] or "[]")[:3] if len(k) <= 24]
+        url = r["url"] or ""
+        if url == _default_url(r["item_id"]):
+            url = ""  # 화면에서 ID로 복원 가능한 기본 URL은 생략
+        rk = ranks.get(r["item_id"]) or []
+        rows.append([r["item_id"], r["title"] if r["title"] and r["title"] != r["item_id"].split(":", 1)[1] else "", src[0] if src != "hf_dataset" else "d",
+                     FIELD_CODE.get(r["field"], ""), d, url, (r["created_at"] or "")[:7],
+                     int(m) if m is not None else None, rk if any(rk) else 0, kw])
+    dump_json(ROOT / "docs" / "data" / "search.json",
+              {"run_date": today.isoformat(), "combos": [f"{p}|{a}" for p, a in combos],
+               "totals": totals, "rows": rows})
+    return len(rows)

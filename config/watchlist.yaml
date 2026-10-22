@@ -1,0 +1,11 @@
+# 관심 목록 — 자동 편입 조건과 상관없이 항상 추적한다.
+# 추가: venv/bin/python -m src.watch add storytold/artcraft            (GitHub)
+#       venv/bin/python -m src.watch add hf_model:Qwen/Qwen3-8B         (HF 모델)
+#       venv/bin/python -m src.watch add hf_dataset:HuggingFaceFW/fineweb (HF 데이터셋)
+github:
+- storytold/artcraft
+- nextlevelbuilder/ui-ux-pro-max-skill
+- android/skills
+- anomalyco/opencode
+hf_model: []
+hf_dataset: []

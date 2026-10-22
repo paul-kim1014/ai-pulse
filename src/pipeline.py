@@ -13,7 +13,7 @@ from src.classify import llm
 from src.classify.run import classify_all, describe_all
 from src.collectors import github, huggingface, papers
 from src.notify import email as mail
-from src.publish.export import displayed_ids, export
+from src.publish.export import displayed_ids, export, search_index
 from src.scoring.rank import rank_all
 from src.scoring.score import AXES, PERIODS, compute
 from src.storage.db import connect, log_run
@@ -85,6 +85,7 @@ def main():
         step(con, status, "github", github.collect, con, today)
         step(con, status, "huggingface", huggingface.discover_and_collect, con, today)
         step(con, status, "hf_detail", huggingface.collect_details, con, today)
+        step(con, status, "hf_watchlist", huggingface.collect_watchlist, con, today)
         step(con, status, "semantic_scholar", papers.collect_s2_citations, con, today)
 
     use_llm = not args.no_llm and llm.available()
@@ -123,6 +124,9 @@ def main():
                         (today.isoformat(), json.dumps(summary, ensure_ascii=False), cfg("sources")["llm"]["model"]))
         except Exception as e:
             log.warning("3줄 요약 생략: %s", e)
+    if not summary:  # LLM을 못 쓴 실행이면 가장 최근 요약을 그대로 보여 준다
+        row = con.execute("SELECT text FROM summaries ORDER BY date DESC LIMIT 1").fetchone()
+        summary = json.loads(row["text"]) if row else []
     con.commit()
 
     trends = {"summary": summary, "keywords": kws, "share": share, "new_entries": new_entries,
@@ -131,6 +135,7 @@ def main():
     # 7. 배포용 JSON (git push는 scripts/run_daily.sh가 담당)
     n = export(con, today, lists, prev, windows, modes, items, snaps, trends, status)
     log.info("dashboard.json 생성: 항목 %d개", n)
+    log.info("search.json 생성: 항목 %d개", search_index(con, results, snaps, today))
 
     # 8. 알림 — 순위 급변·이슈 감지 시에만 메일
     if cfg("alerts").get("enabled") and not args.no_email:

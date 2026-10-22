@@ -123,3 +123,36 @@ def collect_details(con, today):
             done += 1
     con.commit()
     return done
+
+
+def collect_watchlist(con, today):
+    """관심 목록의 HF 모델·데이터셋 — 정렬 상위 목록에 없어도 매일 상세 지표를 조회."""
+    wl = cfg("watchlist")
+    ids = [f"hf_model:{m}" for m in wl.get("hf_model") or []] + [f"hf_dataset:{d}" for d in wl.get("hf_dataset") or []]
+    n = 0
+    for iid in ids:
+        src, mid = iid.split(":", 1)
+        url = f"https://huggingface.co/{mid}" if src == "hf_model" else f"https://huggingface.co/datasets/{mid}"
+        con.execute("INSERT OR IGNORE INTO items(item_id, source, type, name, title, url, first_seen, last_seen)"
+                    " VALUES(?,?,?,?,?,?,?,?)", (iid, src, src[3:], mid, mid, url, today.isoformat(), today.isoformat()))
+        try:
+            kind = "models" if src == "hf_model" else "datasets"
+            m = http_get(f"{API}/{kind}/{mid}", params=[("expand[]", e) for e in
+                         ("tags", "createdAt", "pipeline_tag" if kind == "models" else "description")],
+                         headers=_headers()).json()
+            tags = m.get("tags") or []
+            arx = _arxiv_links(tags)
+            upsert_item(con, {"item_id": iid, "source": src, "name": mid, "title": mid, "url": url,
+                              "description": (m.get("description") or "")[:500] or None,
+                              "created_at": (m.get("createdAt") or "")[:10] or None,
+                              "keywords": [t for t in tags if not SYSTEM_TAG.match(t)],
+                              "arxiv_id": arx[0] if 0 < len(arx) <= 2 else None,
+                              "extra": {"pipeline_tag": m.get("pipeline_tag")}}, today.isoformat())
+            _, met = _detail(iid)
+            put_metrics(con, iid, today.isoformat(), met)
+            con.execute("UPDATE items SET detail_at=?, is_active=1 WHERE item_id=?", (today.isoformat(), iid))
+            n += 1
+        except Exception as e:
+            log.warning("관심 목록 HF 조회 실패 %s: %s", mid, e)
+    con.commit()
+    return n

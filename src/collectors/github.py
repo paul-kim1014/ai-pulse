@@ -57,6 +57,11 @@ def discover(con, today, extra_repos=()):
     queries += [(f"{q} in:name,description,topics created:>={since35} stars:>={c['new_repo_min_stars']}", 2)
                 for q in c["new_repo_queries"]]
     queries += [(f"topic:{t} created:>={today.year}-01-01 stars:>=300", 1) for t in c["topics"]]
+    rh = c.get("recent_hot")
+    if rh:
+        since = (today - timedelta(days=rh["days"])).isoformat()
+        queries += [(f"{q} in:name,description,topics created:>={since} stars:>={rh['min_stars']}", rh["pages"])
+                    for q in c["new_repo_queries"]]
     # 지난달 신규 (월간 코호트용)
     first = today.replace(day=1)
     prev_first = (first - timedelta(days=1)).replace(day=1)
@@ -77,6 +82,8 @@ def discover(con, today, extra_repos=()):
             "title": r["full_name"], "url": r["html_url"], "description": (r.get("description") or "")[:500],
             "created_at": (r.get("created_at") or "")[:10], "keywords": r.get("topics") or [],
         }, today.isoformat())
+    for full in cfg("watchlist").get("github") or []:  # 관심 목록은 조건과 무관하게 추적
+        add_repo(con, full, today)
     for full, arxiv_id in extra_repos:  # 추적 논문의 공식 코드 저장소
         con.execute("INSERT OR IGNORE INTO items(item_id, source, type, name, title, url, first_seen, last_seen, extra)"
                     " VALUES(?,?,?,?,?,?,?,?,?)",
@@ -87,6 +94,17 @@ def discover(con, today, extra_repos=()):
     con.commit()
     after = con.execute("SELECT COUNT(*) FROM items WHERE source='github'").fetchone()[0]
     return after - before, len(cands)
+
+
+def add_repo(con, full, today, extra=None):
+    """저장소 1개를 추적 대상에 넣는다 (이미 있으면 다시 활성화)."""
+    iid = f"github:{full.lower()}"
+    con.execute("INSERT OR IGNORE INTO items(item_id, source, type, name, title, url, first_seen, last_seen, extra)"
+                " VALUES(?,?,?,?,?,?,?,?,?)",
+                (iid, "github", "repo", full, full, f"https://github.com/{full}", today.isoformat(),
+                 today.isoformat(), json.dumps(extra or {})))
+    con.execute("UPDATE items SET is_active=1 WHERE item_id=?", (iid,))
+    return iid
 
 
 FIELDS = """nameWithOwner url description createdAt pushedAt isFork isMirror isArchived
@@ -109,10 +127,10 @@ def _query_split(parts, offset):
         return {**a, **b}
 
 
-def collect(con, today):
-    """추적 중인 모든 저장소의 당일 지표를 GraphQL로 25개씩 묶어 조회."""
+def collect(con, today, only=None):
+    """추적 중인 모든 저장소(또는 only 목록)의 당일 지표를 GraphQL로 25개씩 묶어 조회."""
     batch = cfg("sources")["github"]["graphql_batch"]
-    ids = [r["item_id"] for r in con.execute(
+    ids = only or [r["item_id"] for r in con.execute(
         "SELECT item_id FROM items WHERE source='github' AND is_active=1 ORDER BY item_id")]
     since = (today - timedelta(days=365)).isoformat() + "T00:00:00Z"
     fields = FIELDS % since

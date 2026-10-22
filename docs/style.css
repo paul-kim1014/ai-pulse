@@ -175,3 +175,26 @@ table.rank td:first-child { border-left: 0; font-weight: 800; font-size: 16px; c
   .matrix-box { height: 320px; }
   h1 .sub { display: block; margin: 2px 0 0; }
 }
+
+/* 검색 */
+.search-box { margin: 0 0 16px; }
+.search-row { display: flex; gap: 8px; align-items: center; }
+#q { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+#q:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#q-live { white-space: nowrap; padding: 9px 12px; }
+.search-results { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin-top: 8px; padding: 6px 14px 10px; box-shadow: var(--shadow); }
+.search-results h3 { margin: 10px 0 4px; }
+.sr { display: block; padding: 9px 0; border-bottom: 1px solid var(--line); cursor: pointer; text-decoration: none; }
+.sr:last-child { border-bottom: 0; }
+.sr:hover .sr-t { color: var(--accent); }
+.sr-head { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.sr-t { font-weight: 700; font-size: 14.5px; word-break: break-word; }
+.sr-m { margin-left: auto; font-size: 12.5px; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-2); }
+.sr-d { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.sr-r { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.sr-r span { font-size: 11.5px; background: var(--surface-2); color: var(--text-2); border-radius: 4px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.sr-r span.top { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.sr-note { font-size: 12.5px; color: var(--muted); padding: 6px 0; }
+.sr-note code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+@media (max-width: 760px) { .search-row { flex-wrap: wrap; } #q-live { width: 100%; } .sr-m { margin-left: 0; width: 100%; } }
+.note a { color: var(--accent); text-decoration: none; }

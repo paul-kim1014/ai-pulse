@@ -6,7 +6,7 @@
 <title>AI Pulse — AI 트렌드·영향력 랭킹</title>
 <meta name="description" content="GitHub · Hugging Face · AI 논문을 하나의 평가 체계로 통합한 AI 트렌드·영향력 순위 (매일 06:00 KST 갱신)">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=6">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -24,6 +24,14 @@
 </header>
 
 <main class="wrap">
+  <section class="search-box" role="search">
+    <div class="search-row">
+      <input id="q" type="search" placeholder="제목·저장소·모델·키워드 검색 (예: artcraft, qwen, medical)" autocomplete="off" aria-label="AI Pulse 검색">
+      <button id="q-live" class="chip" title="GitHub·Hugging Face에서 지금 바로 찾아보기">GitHub·HF 실시간 검색</button>
+    </div>
+    <div id="search-results" class="search-results" hidden></div>
+  </section>
+
   <section class="trend-grid">
     <article class="card summary">
       <h2>오늘의 AI 트렌드 요약</h2>
@@ -109,6 +117,6 @@
     <div id="d-body"></div>
   </aside>
 </div>
-<script src="app.js"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
