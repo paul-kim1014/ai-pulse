@@ -7,6 +7,7 @@
 import json
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 from src.storage.db import put_metrics, upsert_item
@@ -52,11 +53,14 @@ def discover(con, today, extra_repos=()):
     """편입 조건을 만족하는 저장소를 찾아 items에 추가. 반환: 신규 편입 수."""
     c = cfg("sources")["github"]
     cands = {}
-    queries = [(f"topic:{t} stars:>={c['min_stars']}", c["pages_per_topic"]) for t in c["topics"]]
+    # 토픽 전체 탐색(검색 수백 회·20분+)은 주 1회(월요일·첫 실행)만. 매일은 신규·급상승 저장소만 찾는다.
+    full = today.weekday() == 0 or con.execute("SELECT COUNT(*) FROM items WHERE source='github'").fetchone()[0] == 0
+    queries = [(f"topic:{t} stars:>={c['min_stars']}", c["pages_per_topic"]) for t in c["topics"]] if full else []
     since35 = (today - timedelta(days=35)).isoformat()
     queries += [(f"{q} in:name,description,topics created:>={since35} stars:>={c['new_repo_min_stars']}", 2)
                 for q in c["new_repo_queries"]]
-    queries += [(f"topic:{t} created:>={today.year}-01-01 stars:>=300", 1) for t in c["topics"]]
+    if full:
+        queries += [(f"topic:{t} created:>={today.year}-01-01 stars:>=300", 1) for t in c["topics"]]
     rh = c.get("recent_hot")
     if rh:
         since = (today - timedelta(days=rh["days"])).isoformat()
@@ -127,6 +131,34 @@ def _query_split(parts, offset):
         return {**a, **b}
 
 
+def _store_repo(con, iid, r, today):
+    if not r:
+        con.execute("UPDATE items SET is_active=0 WHERE item_id=? AND last_seen<?",
+                    (iid, (today - timedelta(days=14)).isoformat()))
+        return 0
+    if r.get("isFork") or r.get("isMirror"):  # 미러·포크는 순위 제외 (기획서 3.4)
+        con.execute("UPDATE items SET is_active=0 WHERE item_id=?", (iid,))
+        return 0
+    topics = [n["topic"]["name"] for n in ((r.get("repositoryTopics") or {}).get("nodes") or []) if n]
+    hist = ((r.get("defaultBranchRef") or {}).get("target") or {}).get("history") or {}
+    pushed = parse_date(r.get("pushedAt"))
+    tc = lambda k: (r.get(k) or {}).get("totalCount")  # noqa: E731
+    upsert_item(con, {
+        "item_id": iid, "source": "github", "name": r["nameWithOwner"], "title": r["nameWithOwner"],
+        "url": r["url"], "description": (r.get("description") or "")[:500],
+        "created_at": (r.get("createdAt") or "")[:10] or None, "keywords": topics,
+        "extra": {"archived": r.get("isArchived")},
+    }, today.isoformat())
+    issues, prs = tc("issues"), tc("pullRequests")
+    put_metrics(con, iid, today.isoformat(), {
+        "stars": r.get("stargazerCount"), "forks": r.get("forkCount"), "watchers": tc("watchers"),
+        "issues_prs": (issues + prs) if issues is not None and prs is not None else None,
+        "contributors": tc("mentionableUsers"), "commits_1y": hist.get("totalCount"),
+        "days_since_push": (today - pushed).days if pushed else None,
+    })
+    return 1
+
+
 def collect(con, today, only=None):
     """추적 중인 모든 저장소(또는 only 목록)의 당일 지표를 GraphQL로 25개씩 묶어 조회."""
     batch = cfg("sources")["github"]["graphql_batch"]
@@ -134,44 +166,30 @@ def collect(con, today, only=None):
         "SELECT item_id FROM items WHERE source='github' AND is_active=1 ORDER BY item_id")]
     since = (today - timedelta(days=365)).isoformat() + "T00:00:00Z"
     fields = FIELDS % since
-    ok = 0
-    for i in range(0, len(ids), batch):
-        chunk = ids[i:i + batch]
+    chunks = [ids[i:i + batch] for i in range(0, len(ids), batch)]
+
+    def fetch(ci):
         parts = []
-        for j, iid in enumerate(chunk):
+        for j, iid in enumerate(chunks[ci]):
             owner, name = iid.split(":", 1)[1].split("/", 1)
             parts.append(f'r{j}:repository(owner:{json.dumps(owner)},name:{json.dumps(name)}){{{fields}}}')
-        data = _query_split(parts, i)
-        rl = data.get("rateLimit") or {}
-        if rl.get("remaining", 9999) < 200:
-            log.info("GraphQL 잔여 한도 %s → 리셋까지 대기", rl.get("remaining"))
-            time.sleep(600)
-        for j, iid in enumerate(chunk):
-            r = data.get(f"r{j}")
-            if not r:
-                con.execute("UPDATE items SET is_active=0 WHERE item_id=? AND last_seen<?",
-                            (iid, (today - timedelta(days=14)).isoformat()))
-                continue
-            if r["isFork"] or r["isMirror"]:  # 미러·포크는 순위 제외 (기획서 3.4)
-                con.execute("UPDATE items SET is_active=0 WHERE item_id=?", (iid,))
-                continue
-            topics = [n["topic"]["name"] for n in r["repositoryTopics"]["nodes"]]
-            hist = ((r.get("defaultBranchRef") or {}).get("target") or {}).get("history") or {}
-            pushed = parse_date(r["pushedAt"])
-            upsert_item(con, {
-                "item_id": iid, "source": "github", "name": r["nameWithOwner"], "title": r["nameWithOwner"],
-                "url": r["url"], "description": (r.get("description") or "")[:500],
-                "created_at": r["createdAt"][:10], "keywords": topics,
-                "extra": {"archived": r["isArchived"]},
-            }, today.isoformat())
-            put_metrics(con, iid, today.isoformat(), {
-                "stars": r["stargazerCount"], "forks": r["forkCount"],
-                "watchers": r["watchers"]["totalCount"],
-                "issues_prs": r["issues"]["totalCount"] + r["pullRequests"]["totalCount"],
-                "contributors": r["mentionableUsers"]["totalCount"],
-                "commits_1y": hist.get("totalCount"),
-                "days_since_push": (today - pushed).days if pushed else None,
-            })
-            ok += 1
-        con.commit()
+        return ci, _query_split(parts, ci * batch)
+
+    ok = bad = 0
+    # 묶음 조회는 4개씩 병렬(네트워크 대기 시간 절약), DB 기록은 이 스레드에서만
+    with ThreadPoolExecutor(4) as ex:
+        for ci, data in ex.map(fetch, range(len(chunks))):
+            rl = data.get("rateLimit") or {}
+            if rl.get("remaining", 9999) < 200:
+                log.info("GraphQL 잔여 한도 %s → 리셋까지 대기", rl.get("remaining"))
+                time.sleep(600)
+            for j, iid in enumerate(chunks[ci]):
+                try:
+                    ok += _store_repo(con, iid, data.get(f"r{j}"), today)
+                except Exception as e:  # 저장소 하나의 이상한 응답이 전체 수집을 멈추지 않도록
+                    bad += 1
+                    log.debug("저장소 기록 실패 %s: %s", iid, e)
+            con.commit()
+    if bad:
+        log.warning("GitHub 저장소 %d개 기록 실패(응답 불완전) — 다음 실행에서 재시도", bad)
     return ok

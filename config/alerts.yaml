@@ -1,5 +1,8 @@
-# 순위 급변·이슈 감지 메일 발송 조건 (하나라도 해당하면 발송)
+# 메일 설정
 enabled: true
+daily_digest: true               # true: 매일 06:00 업데이트 후 랭킹 요약 메일 발송 (아래 변화 감지 내용은 메일 상단에 강조)
+                                 # false: 아래 조건에 해당하는 변화가 있을 때만 발송
+# 변화 감지 조건 (하나라도 해당하면 '감지된 변화'로 표시)
 watch_views: [integrated, github, hf_model, hf_dataset, paper]
 watch_periods: [weekly]          # 일 단위로 의미 있게 바뀌는 기간
 watch_axes: [popularity, influence]

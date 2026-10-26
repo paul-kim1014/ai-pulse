@@ -137,7 +137,7 @@ def main():
     log.info("dashboard.json 생성: 항목 %d개", n)
     log.info("search.json 생성: 항목 %d개", search_index(con, results, snaps, today))
 
-    # 8. 알림 — 순위 급변·이슈 감지 시에만 메일
+    # 8. 메일 — 매일 랭킹 요약(daily_digest) 또는 순위 급변·이슈 감지 시에만
     if cfg("alerts").get("enabled") and not args.no_email:
         try:
             meta = json.load(open(os.path.join(os.path.dirname(__file__), "..", "docs", "data", "dashboard.json"),
@@ -147,17 +147,25 @@ def main():
             alerted = {r[0][6:] for r in con.execute("SELECT keyword FROM trends WHERE date>=? AND date<? AND source='alerted'",
                                                  (since, today.isoformat()))}
             events = mail.detect_events(lists, prev, kws, flags, meta, alerted)
-            if events:
+            sent = False
+            if cfg("alerts").get("daily_digest"):  # 매일 랭킹 요약 메일 (변화 감지 내용은 메일 상단에 포함)
+                D = json.load(open(os.path.join(os.path.dirname(__file__), "..", "docs", "data", "dashboard.json"),
+                                   encoding="utf-8"))
+                tail = f"변화 감지 {len(events)}건" if events else "주요 변화 없음"
+                sent = mail.send(f"[AI Pulse] {today:%m/%d} 일일 랭킹 — {tail}",
+                                 mail.render_daily(D, lists, prev, events, SITE_URL))
+            elif events:
                 kinds = sorted({e["kind"] for e in events})
                 subj = f"[AI Pulse] {today:%m/%d} 변화 감지 {len(events)}건 — {', '.join(kinds)}"
-                if mail.send(subj, mail.render(events, meta, summary, SITE_URL, today.isoformat())):
-                    for e in events:
-                        if e["kind"] == "급상승 키워드":
-                            k = e["detail"].split("'")[1]
-                            con.execute("INSERT OR REPLACE INTO trends VALUES(?,?,?,?,?)",
-                                        (today.isoformat(), f"alert:{k}", "alerted", 0, 0))
-                    con.commit()
-            else:
+                sent = mail.send(subj, mail.render(events, meta, summary, SITE_URL, today.isoformat()))
+            if sent:
+                for e in events:
+                    if e["kind"] == "급상승 키워드":
+                        k = e["detail"].split("'")[1]
+                        con.execute("INSERT OR REPLACE INTO trends VALUES(?,?,?,?,?)",
+                                    (today.isoformat(), f"alert:{k}", "alerted", 0, 0))
+                con.commit()
+            elif not events and not cfg("alerts").get("daily_digest"):
                 log.info("알림 조건에 해당하는 변화 없음 → 메일 생략")
         except Exception as e:
             log.error("알림 단계 실패: %s", e)

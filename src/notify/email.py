@@ -90,8 +90,97 @@ def send(subject, html_body):
     msg = MIMEMultipart("alternative")
     msg["Subject"], msg["From"], msg["To"] = subject, f"AI Pulse <{user}>", to
     msg.attach(MIMEText(html_body, "html", "utf-8"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context(), timeout=30) as s:
-        s.login(user, pw.replace(" ", ""))
+    # 587+STARTTLS: 인증 실패 시 465(SSL)처럼 연결만 끊지 않고 535 코드를 돌려줘서 원인을 알 수 있다
+    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as s:
+        s.starttls(context=ssl.create_default_context())
+        try:
+            s.login(user, pw.replace(" ", ""))
+        except (smtplib.SMTPAuthenticationError, smtplib.SMTPServerDisconnected) as e:
+            raise RuntimeError("Gmail이 앱 비밀번호를 거부함(535) — Google 계정에서 앱 비밀번호를 새로 만들어 "
+                               ".env의 GMAIL_APP_PASSWORD를 바꿔야 합니다") from e
         s.sendmail(user, [a.strip() for a in to.split(",")], msg.as_string())
     log.info("알림 메일 발송 → %s", to)
     return True
+
+
+def _chg(iid, rank, prev):
+    if not prev:
+        return ""
+    pr = {x: i + 1 for i, x in enumerate(prev)}.get(iid)
+    if pr is None or pr > 10:
+        return "<b style='color:#6250d6'>NEW</b>"
+    d = pr - rank
+    return (f"<b style='color:#0f8a3c'>▲{d}</b>" if d > 0 else f"<b style='color:#c93b3b'>▼{-d}</b>" if d < 0
+            else "<span style='color:#999'>–</span>")
+
+
+SRC_KO = {"github": "GitHub", "hf_model": "HF 모델", "hf_dataset": "HF 데이터셋", "paper": "논문"}
+
+
+def _table(title, entries, items, prev, labels, n):
+    rows = []
+    for r, e in enumerate(entries[:n], 1):
+        m = items.get(e["id"], {})
+        name = html.escape(m.get("t", e["id"]))
+        tag = f"{SRC_KO.get(m.get('s'), '')} · {html.escape(labels.get(m.get('f'), '미분류'))}"
+        desc = html.escape((m.get("d") or "")[:70])
+        rows.append(
+            f"<tr><td style='padding:6px 6px;border-bottom:1px solid #eee;text-align:center;font-weight:700;color:#555'>{r}</td>"
+            f"<td style='padding:6px 6px;border-bottom:1px solid #eee'><a href='{html.escape(m.get('u', '#'))}' "
+            f"style='color:#111;font-weight:700;text-decoration:none'>{name}</a>"
+            f"<div style='color:#888;font-size:12px'>{tag}</div>"
+            f"{f'<div style=\"color:#555;font-size:13px\">{desc}</div>' if desc else ''}</td>"
+            f"<td style='padding:6px 6px;border-bottom:1px solid #eee;white-space:nowrap;font-size:13px;text-align:right'>"
+            f"{html.escape(e.get('text', ''))}<br>{_chg(e['id'], r, prev)}</td></tr>")
+    return (f"<h3 style='margin:20px 0 6px;font-size:16px'>{title}</h3>"
+            f"<table style='border-collapse:collapse;width:100%'>{''.join(rows)}</table>")
+
+
+def render_daily(D, lists, prev_lists, events, site_url):
+    """매일 보내는 랭킹 요약 메일 — 대시보드 상단 내용을 메일로."""
+    items, labels = D["items"], D["fields"]["labels"]
+    T = D["trends"]
+    P = lambda k: prev_lists.get(k, [])  # noqa: E731
+    parts = [f"""<div style="font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;max-width:700px;color:#111">
+<h2 style="margin:0 0 4px">AI Pulse 일일 랭킹</h2>
+<div style="color:#888;margin-bottom:10px">{D['run_date']} 업데이트 · 주간 = {html.escape(D['periods']['weekly']['label'])}
+ · <a href="{site_url}">대시보드 열기</a></div>"""]
+    if T.get("summary"):
+        parts.append("<h3 style='margin:14px 0 4px;font-size:16px'>오늘의 3줄 요약</h3><ol style='margin:0;padding-left:20px'>"
+                     + "".join(f"<li>{html.escape(s)}</li>" for s in T["summary"]) + "</ol>")
+    if events:
+        rows = []
+        for e in events:
+            m = items.get(e["id"], {}) if e["id"] else {}
+            rows.append(f"<li><b>{e['kind']}</b> <span style='color:#888'>[{e['where']}]</span> "
+                        f"{html.escape(m.get('t', ''))} — <span style='color:#0a6'>{html.escape(e['detail'])}</span></li>")
+        parts.append(f"<div style='background:#fff6e0;border-radius:8px;padding:8px 12px;margin-top:14px'>"
+                     f"<b>⚡ 감지된 변화 {len(events)}건</b><ul style='margin:6px 0;padding-left:18px'>{''.join(rows)}</ul></div>")
+    parts.append(_table("통합 트렌드 주간 인기 TOP 10", lists[("integrated", "weekly", "popularity")], items,
+                        P(("integrated", "weekly", "popularity")), labels, 10))
+    parts.append(_table("GitHub 주간 인기 TOP 5", lists[("github", "weekly", "popularity")], items,
+                        P(("github", "weekly", "popularity")), labels, 5))
+    parts.append(_table("Hugging Face 모델 주간 인기 TOP 5", lists[("hf_model", "weekly", "popularity")], items,
+                        P(("hf_model", "weekly", "popularity")), labels, 5))
+    # 논문: 분야별 이번 주 인기 1위
+    best = []
+    for f in D["fields"]["order"]:
+        for e in lists[("paper", "weekly", "popularity")]:
+            if items.get(e["id"], {}).get("f") == f:
+                best.append({**e, "_f": f})
+                break
+    rows = "".join(
+        f"<tr><td style='padding:5px 6px;border-bottom:1px solid #eee;white-space:nowrap;color:#555;font-size:13px'>"
+        f"{html.escape(labels[e['_f']])}</td><td style='padding:5px 6px;border-bottom:1px solid #eee'>"
+        f"<a href='{html.escape(items[e['id']].get('u', '#'))}' style='color:#111;text-decoration:none;font-weight:600'>"
+        f"{html.escape(items[e['id']]['t'])}</a></td><td style='padding:5px 6px;border-bottom:1px solid #eee;"
+        f"white-space:nowrap;font-size:13px;text-align:right'>{html.escape(e['text'])}</td></tr>" for e in best)
+    parts.append(f"<h3 style='margin:20px 0 6px;font-size:16px'>이번 주 논문 분야별 1위</h3>"
+                 f"<table style='border-collapse:collapse;width:100%'>{rows}</table>")
+    if T.get("keywords"):
+        kws = " · ".join(f"{html.escape(k['k'])} <b style='color:#0f8a3c'>{'NEW' if k['new'] else '×' + str(k['ratio'])}</b>"
+                         for k in T["keywords"][:10])
+        parts.append(f"<h3 style='margin:20px 0 6px;font-size:16px'>급상승 키워드</h3><div style='font-size:14px'>{kws}</div>")
+    parts.append(f"<p style='margin-top:22px'><a href='{site_url}'>대시보드에서 전체 순위·검색 보기 →</a></p>"
+                 "<p style='color:#aaa;font-size:12px'>매일 06:00 업데이트 후 자동 발송 · 설정: config/alerts.yaml</p></div>")
+    return "".join(parts)

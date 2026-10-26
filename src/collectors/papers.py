@@ -6,6 +6,7 @@
 import json
 import re
 import time
+import zlib
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
@@ -138,7 +139,12 @@ def collect_s2_classics(con, today):
 def collect_s2_citations(con, today):
     """추적 논문 전체의 인용 수 — batch 500편 단위."""
     top_venues = [v.lower() for v in cfg("sources")["papers"]["top_venues"]]
-    rows = con.execute("SELECT item_id, arxiv_id, extra FROM items WHERE source='paper' AND is_active=1").fetchall()
+    rows = con.execute("SELECT item_id, arxiv_id, extra, created_at FROM items WHERE source='paper' AND is_active=1"
+                       ).fetchall()
+    # 1년 넘은 논문은 인용이 천천히 변하므로 요일별로 나눠 주 1회만 갱신 (비인증 한도·시간 절약)
+    old_cut = (today - timedelta(days=365)).isoformat()
+    wd = today.weekday()
+    rows = [r for r in rows if (r["created_at"] or "") >= old_cut or zlib.crc32(r["item_id"].encode()) % 7 == wd]
     keys = []
     for r in rows:
         ex = json.loads(r["extra"] or "{}")
